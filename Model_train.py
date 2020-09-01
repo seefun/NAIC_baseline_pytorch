@@ -10,7 +10,7 @@ import os
 import torch.nn as nn
 import random
 
-from Model_define_pytorch import AutoEncoder, DatasetFolder, NMSE_cuda
+from Model_define_pytorch import AutoEncoder, DatasetFolder, NMSE_cuda, NMSELoss
 
 # Parameters for training
 gpu_list = '0'
@@ -29,7 +29,7 @@ seed_everything(SEED)
 
 batch_size = 256
 epochs = 100
-learning_rate = 5e-4
+learning_rate = 2e-3 # bigger to train faster
 num_workers = 4
 print_freq = 500  
 train_test_ratio = 0.8
@@ -51,9 +51,10 @@ if len(gpu_list.split(',')) > 1:
 else:
     model = model.cuda()
 
-criterion = nn.MSELoss()
+criterion = NMSELoss(reduction='mean') #nn.MSELoss()
+criterion_test = NMSELoss(reduction='sum')
 
-optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate, weight_decay=2e-4)
+optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
 
 
 # Data loading
@@ -62,7 +63,7 @@ mat = h5py.File(data_load_address + '/H_train.mat', 'r')
 data = np.transpose(mat['H_train'])  # shape=(320000, 1024)
 data = data.astype('float32')
 data = np.reshape(data, [len(data), img_channels, img_height, img_width])
-# split data for training(70%) and validation(30%)
+# split data for training(80%) and validation(20%)
 np.random.shuffle(data)
 start = int(data.shape[0] * train_test_ratio)
 x_train, x_test = data[:start], data[start:]
@@ -110,7 +111,6 @@ for epoch in range(epochs):
         
         loss = criterion(output, input)
         loss.backward()
-        torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=5.0, norm_type=2)
         optimizer.step()
         optimizer.zero_grad()
         
@@ -131,7 +131,7 @@ for epoch in range(epochs):
             # convert numpy to Tensor
             input = input.cuda()
             output = model(input)
-            total_loss += NMSE_cuda(input, output).cpu().numpy()
+            total_loss += criterion_test(output, input).item()
         average_loss = total_loss / len(test_dataset)
         print('NMSE %.4f'%average_loss)
         if average_loss < best_loss:
