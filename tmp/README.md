@@ -8,3 +8,6 @@
     -  H_val.bin
 
 run train_multigpu.ipynb
+
+
+!!! [place holder] 复赛结束后开源
